@@ -1,0 +1,131 @@
+name: Build Legacy Nova Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Nova version to build"
+        required: true
+        type: choice
+        options:
+          - "0.9.0"
+          - "0.8.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Nova ${{ inputs.version }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout Nova
+        uses: actions/checkout@v4
+
+      - name: Select source file
+        shell: bash
+        run: |
+          if [ "${{ inputs.version }}" = "0.9.0" ]; then
+            echo "NOVA_SOURCE=nova_beta.py" >> "$GITHUB_ENV"
+          else
+            echo "NOVA_SOURCE=nova_v0.8.py" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Verify source version
+        shell: bash
+        run: |
+          python "$NOVA_SOURCE" --version
+
+      - name: Build executable
+        shell: bash
+        run: |
+          python -m PyInstaller --onefile --name nova "$NOVA_SOURCE"
+
+      - name: Test executable
+        shell: bash
+        run: |
+          ./dist/nova --version
+          ./dist/nova help
+
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          PACKAGE="nova-${{ inputs.version }}-linux-x86_64"
+          mkdir -p "$PACKAGE"
+          cp dist/nova "$PACKAGE/nova"
+          cat > "$PACKAGE/README.txt" <<EOF2
+          Nova ${{ inputs.version }}
+
+          Linux x86_64 standalone build.
+
+          Run:
+            ./nova --version
+            ./nova help
+            ./nova your_program.nova
+
+          Python is not required to run the bundled Nova executable.
+          EOF2
+          tar -czf "${PACKAGE}.tar.gz" "$PACKAGE"
+
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = "nova-${{ inputs.version }}-windows-x86_64"
+          New-Item -ItemType Directory -Force $package | Out-Null
+          Copy-Item "dist\nova.exe" "$package\nova.exe"
+          @"
+          Nova ${{ inputs.version }}
+
+          Windows x86_64 standalone build.
+
+          Run:
+            nova.exe --version
+            nova.exe help
+            nova.exe your_program.nova
+
+          Python is not required to run the bundled Nova executable.
+          "@ | Set-Content "$package\README.txt"
+          Compress-Archive -Path $package -DestinationPath "$package.zip"
+
+      - name: Upload Linux asset to release
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload \
+            "v${{ inputs.version }}" \
+            "nova-${{ inputs.version }}-linux-x86_64.tar.gz" \
+            --repo "${{ github.repository }}" \
+            --clobber
+
+      - name: Upload Windows asset to release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload `
+            "v${{ inputs.version }}" `
+            "nova-${{ inputs.version }}-windows-x86_64.zip" `
+            --repo "${{ github.repository }}" `
+            --clobber
