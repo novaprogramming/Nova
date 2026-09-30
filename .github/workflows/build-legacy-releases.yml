@@ -35,7 +35,7 @@ jobs:
           if [ "${{ inputs.version }}" = "0.9.0" ]; then
             echo "NOVA_SOURCE=nova_beta.py" >> "$GITHUB_ENV"
           else
-            echo "NOVA_SOURCE=nova_v0.8.py" >> "$GITHUB_ENV"
+            echo "NOVA_SOURCE=nova_alpha.py" >> "$GITHUB_ENV"
           fi
 
       - name: Set up Python
