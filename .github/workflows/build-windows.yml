@@ -1,0 +1,59 @@
+name: Build Nova 1.0 for Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Nova
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller
+
+      - name: Build Nova
+        run: |
+          python -m PyInstaller --onefile --name nova nova_1_0_0.py
+
+      - name: Test Nova
+        run: |
+          .\dist\nova.exe --version
+          .\dist\nova.exe help
+
+      - name: Package Nova
+        shell: pwsh
+        run: |
+          $package = "nova-1.0.0-windows-x86_64"
+          New-Item -ItemType Directory -Force $package | Out-Null
+          Copy-Item "dist\nova.exe" "$package\nova.exe"
+          @"
+          Nova 1.0.0
+          ==========
+
+          Windows x86_64 standalone build.
+
+          Run:
+            nova.exe --version
+            nova.exe help
+            nova.exe your_program.nova
+
+          Python is not required to run the bundled Nova executable.
+          "@ | Set-Content "$package\README.txt"
+
+          Compress-Archive -Path "$package" -DestinationPath "$package.zip"
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nova-1.0.0-windows-x86_64
+          path: nova-1.0.0-windows-x86_64.zip
